@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html>
+<head><title>Redirect Dashboard</title></head>
+<body>
+  <h1>Redirects</h1>
+  <table border="1" id="redirectsTable">
+    <thead><tr><th>Key</th><th>Destination</th><th>Token</th><th>Actions</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadRedirects() {
+      const res = await fetch('/redirects');
+      const redirects = await res.json();
+      const tbody = document.querySelector('#redirectsTable tbody');
+      tbody.innerHTML = '';
+      redirects.forEach(({ key, destination, token }) => {
+        const tr = document.createElement('tr');
+
+        const tdKey = document.createElement('td');
+        tdKey.textContent = key;
+
+        const tdDest = document.createElement('td');
+        const input = document.createElement('input');
+        input.value = destination;
+        input.style.width = '300px';
+        tdDest.appendChild(input);
+
+        const tdToken = document.createElement('td');
+        tdToken.textContent = token;
+
+        const tdActions = document.createElement('td');
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save';
+        saveBtn.onclick = async () => {
+          await fetch(`/redirects/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination: input.value }),
+          });
+          alert('Updated');
+        };
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = async () => {
+          if (confirm('Delete redirect?')) {
+            await fetch(`/redirects/${key}`, { method: 'DELETE' });
+            tr.remove();
+          }
+        };
+
+        tdActions.appendChild(saveBtn);
+        tdActions.appendChild(deleteBtn);
+
+        tr.appendChild(tdKey);
+        tr.appendChild(tdDest);
+        tr.appendChild(tdToken);
+        tr.appendChild(tdActions);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    loadRedirects();
+  </script>
+</body>
+</html>
