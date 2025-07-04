@@ -60,35 +60,16 @@ app.post('/add-redirect', async (req, res) => {
     }
 });
 
-// GET /:key/:token (Upgraded with bot protection + JS challenge)
+// GET /:key/:token
 app.get('/:key/:token', async (req, res) => {
     const { key, token } = req.params;
     const email = req.query.email || null;
     const userAgent = req.headers['user-agent'] || '';
 
-    // --- Bot Check: Known bots & headless browsers
-    if (/bot|crawl|spider|preview|Headless|facebookexternalhit/i.test(userAgent)) {
-        console.log('Blocked bot via UA:', userAgent);
+    if (/bot|crawl|spider|preview/i.test(userAgent)) {
         return res.status(403).send('Access denied.');
     }
 
-    const suspiciousHeaders = ['x-headless', 'x-automated', 'x-puppeteer'];
-    const isSuspicious = suspiciousHeaders.some(h => h in req.headers) ||
-                         userAgent.includes('Headless') ||
-                         req.headers['sec-ch-ua']?.includes('Headless');
-
-    if (isSuspicious) {
-        console.log('Blocked headless browser:', userAgent);
-        return res.status(403).send('Automated browser blocked.');
-    }
-
-    // --- Honeypot trap query
-    if ('trap' in req.query) {
-        console.log('Honeypot triggered:', req.ip);
-        return res.status(403).send('Suspicious behavior detected.');
-    }
-
-    // --- Email validation
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).send('Invalid email format.');
     }
@@ -112,72 +93,47 @@ app.get('/:key/:token', async (req, res) => {
             destination = destination.endsWith('/') ? destination + email : `${destination}/${email}`;
         }
 
-        // --- JS redirect challenge page
-        return res.send(`
-            <html>
-            <head>
-                <title>Redirecting...</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background: #f9f9f9; }
-                    .msg { font-size: 1.2rem; color: #444; }
-                </style>
-            </head>
-            <body>
-                <p class="msg">Verifying your browser, please wait...</p>
-                <script>
-                    // Basic bot detection
-                    if (navigator.webdriver || !navigator.plugins.length || !navigator.languages.length) {
-                        document.body.innerHTML = '<h2>Access denied: bot behavior detected.</h2>';
-                    } else {
-                        setTimeout(function() {
-                            window.location.href = ${JSON.stringify(destination)};
-                        }, 1000);
-                    }
-                </script>
-            </body>
-            </html>
-        `);
+        console.log('Redirecting to:', destination);
+        res.redirect(destination);
     } catch (err) {
         console.log('JWT verification or DB error:', err.message);
-        return res.status(403).send('Invalid or expired token.');
+        res.status(403).send('Invalid or expired token.');
     }
 });
-
 // GET /redirects - list all redirects
 app.get('/redirects', async (req, res) => {
-    try {
-        const redirects = await db.getAllRedirects();
-        res.json(redirects);
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to fetch redirects' });
-    }
+  try {
+    const redirects = await db.getAllRedirects();
+    res.json(redirects);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch redirects' });
+  }
 });
 
 // PUT /redirects/:key - edit redirect destination
 app.put('/redirects/:key', async (req, res) => {
-    const { key } = req.params;
-    const { destination } = req.body;
-    if (!destination || !/^https?:\/\//.test(destination)) {
-        return res.status(400).json({ message: 'Invalid destination URL.' });
-    }
-    try {
-        await db.updateRedirect(key, destination);
-        res.json({ message: 'Redirect updated.' });
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to update redirect.' });
-    }
+  const { key } = req.params;
+  const { destination } = req.body;
+  if (!destination || !/^https?:\/\//.test(destination)) {
+    return res.status(400).json({ message: 'Invalid destination URL.' });
+  }
+  try {
+    await db.updateRedirect(key, destination);
+    res.json({ message: 'Redirect updated.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update redirect.' });
+  }
 });
 
 // DELETE /redirects/:key - delete redirect
 app.delete('/redirects/:key', async (req, res) => {
-    const { key } = req.params;
-    try {
-        await db.deleteRedirect(key);
-        res.json({ message: 'Redirect deleted.' });
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to delete redirect.' });
-    }
+  const { key } = req.params;
+  try {
+    await db.deleteRedirect(key);
+    res.json({ message: 'Redirect deleted.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to delete redirect.' });
+  }
 });
 
 // 404 fallback
