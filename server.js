@@ -3,7 +3,7 @@ const express = require('express');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const db = require('./db'); // MongoDB via Mongoose
+const db = require('./db'); // Now using MongoDB via Mongoose
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,10 +34,6 @@ function generateToken(key) {
     return jwt.sign({ key }, JWT_SECRET);
 }
 
-function generateSlug() {
-    return `offer-${crypto.randomBytes(3).toString('hex')}`;
-}
-
 // POST /add-redirect
 app.post('/add-redirect', async (req, res) => {
     const { destination } = req.body;
@@ -49,14 +45,14 @@ app.post('/add-redirect', async (req, res) => {
 
     const key = generateUniqueKey();
     const token = generateToken(key);
-    const slug = generateSlug();
 
     try {
-        await db.addRedirect(key, slug, destination, token);
+        await db.addRedirect(key, destination, token);
         const baseUrl = req.protocol + '://' + req.get('host');
         res.json({
             message: 'Redirect added successfully!',
-            marketingLink: `${baseUrl}/promo/${slug}`,
+            redirectUrl: `${baseUrl}/${key}?token=${token}`,
+            pathRedirectUrl: `${baseUrl}/${key}/${token}`,
         });
     } catch (err) {
         console.error('DB error on addRedirect:', err);
@@ -64,40 +60,7 @@ app.post('/add-redirect', async (req, res) => {
     }
 });
 
-// ✅ Clean marketing backlink route: /promo/:slug
-app.get('/promo/:slug', async (req, res) => {
-    const { slug } = req.params;
-    const email = req.query.email || null;
-    const userAgent = req.headers['user-agent'] || '';
-
-    if (/bot|crawl|spider|preview/i.test(userAgent)) {
-        return res.status(403).send('Access denied.');
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).send('Invalid email format.');
-    }
-
-    try {
-        const row = await db.getRedirectBySlug(slug);
-        if (!row) {
-            return res.status(404).send('Redirect not found.');
-        }
-
-        let destination = row.destination;
-        if (email) {
-            destination += destination.includes('?') ? `&email=${email}` : `?email=${email}`;
-        }
-
-        console.log(`Redirecting via slug: [${slug}] -> ${destination}`);
-        res.redirect(destination);
-    } catch (err) {
-        console.error('Slug redirect error:', err.message);
-        res.status(500).send('Server error.');
-    }
-});
-
-// Original secure route (key + JWT token in URL path)
+// GET /:key/:token
 app.get('/:key/:token', async (req, res) => {
     const { key, token } = req.params;
     const email = req.query.email || null;
@@ -137,43 +100,40 @@ app.get('/:key/:token', async (req, res) => {
         res.status(403).send('Invalid or expired token.');
     }
 });
-
-// Admin - list all
+// GET /redirects - list all redirects
 app.get('/redirects', async (req, res) => {
-    try {
-        const redirects = await db.getAllRedirects();
-        res.json(redirects);
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to fetch redirects' });
-    }
+  try {
+    const redirects = await db.getAllRedirects();
+    res.json(redirects);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch redirects' });
+  }
 });
 
-// Admin - update by key
+// PUT /redirects/:key - edit redirect destination
 app.put('/redirects/:key', async (req, res) => {
-    const { key } = req.params;
-    const { destination } = req.body;
-
-    if (!destination || !/^https?:\/\//.test(destination)) {
-        return res.status(400).json({ message: 'Invalid destination URL.' });
-    }
-
-    try {
-        await db.updateRedirect(key, destination);
-        res.json({ message: 'Redirect updated.' });
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to update redirect.' });
-    }
+  const { key } = req.params;
+  const { destination } = req.body;
+  if (!destination || !/^https?:\/\//.test(destination)) {
+    return res.status(400).json({ message: 'Invalid destination URL.' });
+  }
+  try {
+    await db.updateRedirect(key, destination);
+    res.json({ message: 'Redirect updated.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update redirect.' });
+  }
 });
 
-// Admin - delete by key
+// DELETE /redirects/:key - delete redirect
 app.delete('/redirects/:key', async (req, res) => {
-    const { key } = req.params;
-    try {
-        await db.deleteRedirect(key);
-        res.json({ message: 'Redirect deleted.' });
-    } catch (err) {
-        res.status(500).json({ message: 'Failed to delete redirect.' });
-    }
+  const { key } = req.params;
+  try {
+    await db.deleteRedirect(key);
+    res.json({ message: 'Redirect deleted.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to delete redirect.' });
+  }
 });
 
 // 404 fallback
